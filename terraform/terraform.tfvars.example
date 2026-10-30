@@ -1,0 +1,7 @@
+aws_region          = "ap-south-1"
+project_name        = "shopnow"
+environment         = "dev"
+ssh_key_name        = "my-ec2-keypair"        # must already exist in the region
+admin_cidr          = "203.0.113.10/32"       # your IP, and the Jenkins host IP if it needs kubectl access
+node_capacity_type  = "SPOT"                  # use ON_DEMAND for prod
+single_nat_gateway  = true

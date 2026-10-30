@@ -1,0 +1,23 @@
+# Creates the application user automatically on first start of an empty data volume.
+# This replaces the manual "kubectl exec ... mongosh ... db.createUser" step from the README.
+# Credentials come from the mongo-secret Secret (created by scripts/create-secrets.sh from Jenkins credentials).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongo-init
+  namespace: ${NAMESPACE}
+data:
+  01-create-app-user.sh: |
+    #!/bin/bash
+    set -e
+    mongosh --quiet admin --eval "
+    db.getSiblingDB('admin').createUser({
+      user: '${MONGO_APP_USER}',
+      pwd: '${MONGO_APP_PASSWORD}',
+      roles: [
+        { role: 'readWrite', db: 'shopnow' },
+        { role: 'dbAdmin', db: 'shopnow' }
+      ]
+    });
+    "
+    echo "Application user created"

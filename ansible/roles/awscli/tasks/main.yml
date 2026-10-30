@@ -1,0 +1,18 @@
+---
+- name: Check whether AWS CLI v2 is installed
+  ansible.builtin.command: aws --version
+  register: awscli_check
+  failed_when: false
+  changed_when: false
+
+- name: Download AWS CLI v2 bundle
+  ansible.builtin.unarchive:
+    src: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+    dest: /tmp
+    remote_src: true
+  when: awscli_check.rc != 0
+
+- name: Install AWS CLI v2
+  ansible.builtin.command: /tmp/aws/install --update
+  when: awscli_check.rc != 0
+  changed_when: true

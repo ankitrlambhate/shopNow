@@ -1,0 +1,68 @@
+// Orchestrator (Sprint 6): runs the whole flow end to end by calling the individual jobs, in order.
+// Jenkins job name suggestion: full-pipeline   (Script Path: jenkins/Jenkinsfile.full-pipeline)
+// Prerequisite jobs (exact names): infra-terraform, config-ansible, app-cicd, monitoring-setup
+// Note: infra-terraform triggers config-ansible itself after a successful apply.
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    timeout(time: 150, unit: 'MINUTES')
+  }
+
+  parameters {
+    string(name: 'AWS_REGION',      defaultValue: 'ap-south-1',    description: 'AWS region')
+    string(name: 'ENVIRONMENT',     defaultValue: 'dev',           description: 'Environment (cluster becomes shopnow-<env>-eks)')
+    string(name: 'TF_STATE_BUCKET', defaultValue: '',              description: 'Terraform state bucket (scripts/bootstrap-tf-backend.sh)')
+    string(name: 'SSH_KEY_NAME',    defaultValue: '',              description: 'EC2 key pair name')
+    string(name: 'ADMIN_CIDR',      defaultValue: '0.0.0.0/0',     description: 'Allowed admin CIDR (your IP and the Jenkins IP)')
+    string(name: 'APP_PATH_PREFIX', defaultValue: 'shopnow',       description: 'URL prefix for the apps (/<prefix> and /<prefix>-admin)')
+    string(name: 'JENKINS_HOST',    defaultValue: '',              description: 'Hero Vired Jenkins hostname without https:// (optional, enables Jenkins monitoring)')
+    password(name: 'GRAFANA_ADMIN_PASSWORD', defaultValue: '',     description: 'Grafana admin password')
+  }
+
+  stages {
+    stage('1. Infrastructure (Terraform) + Configuration (Ansible)') {
+      steps {
+        build job: 'infra-terraform', wait: true, parameters: [
+          string(name: 'ACTION', value: 'apply'),
+          string(name: 'AWS_REGION', value: params.AWS_REGION),
+          string(name: 'ENVIRONMENT', value: params.ENVIRONMENT),
+          string(name: 'TF_STATE_BUCKET', value: params.TF_STATE_BUCKET),
+          string(name: 'SSH_KEY_NAME', value: params.SSH_KEY_NAME),
+          string(name: 'ADMIN_CIDR', value: params.ADMIN_CIDR),
+          booleanParam(name: 'AUTO_APPROVE', value: true),
+          booleanParam(name: 'TRIGGER_ANSIBLE', value: true)
+        ]
+      }
+    }
+
+    stage('2. Build, Push and Deploy shopNow') {
+      steps {
+        build job: 'app-cicd', wait: true, parameters: [
+          string(name: 'AWS_REGION', value: params.AWS_REGION),
+          string(name: 'EKS_CLUSTER_NAME', value: "shopnow-${params.ENVIRONMENT}-eks"),
+          string(name: 'APP_PATH_PREFIX', value: params.APP_PATH_PREFIX),
+          booleanParam(name: 'DEPLOY', value: true)
+        ]
+      }
+    }
+
+    stage('3. Monitoring') {
+      steps {
+        build job: 'monitoring-setup', wait: true, parameters: [
+          string(name: 'AWS_REGION', value: params.AWS_REGION),
+          string(name: 'EKS_CLUSTER_NAME', value: "shopnow-${params.ENVIRONMENT}-eks"),
+          string(name: 'JENKINS_HOST', value: params.JENKINS_HOST),
+          password(name: 'GRAFANA_ADMIN_PASSWORD', value: params.GRAFANA_ADMIN_PASSWORD)
+        ]
+      }
+    }
+  }
+
+  post {
+    success { echo 'Full pipeline completed: infrastructure, configuration, shopNow and monitoring are up.' }
+    failure { echo 'Full pipeline failed. Open the failed downstream build from the stage log.' }
+  }
+}

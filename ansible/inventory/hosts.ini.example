@@ -1,0 +1,7 @@
+# Static fallback if you do not want the dynamic inventory.
+# Use with: ansible-playbook -i inventory/hosts.ini playbooks/site.yml
+[tools]
+bastion ansible_host=<BASTION_PUBLIC_IP> ansible_user=ubuntu
+
+[role_tools:children]
+tools

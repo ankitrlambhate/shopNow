@@ -1,0 +1,92 @@
+// Ansible configuration pipeline (Sprint 3).
+// Job type: Pipeline from SCM, Script Path = jenkins/Jenkinsfile.ansible
+// Job name MUST be "config-ansible" (the Terraform job triggers it by that name).
+//
+// Required Jenkins credentials:
+//   ec2-ssh-key        : "SSH Username with private key" (username: ubuntu) matching the EC2 key pair
+//   aws-credentials    : AWS credentials binding
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    timeout(time: 30, unit: 'MINUTES')
+  }
+
+  parameters {
+    string(name: 'AWS_REGION',          defaultValue: 'ap-south-1', description: 'AWS region')
+    string(name: 'EKS_CLUSTER_NAME',    defaultValue: '',           description: 'EKS cluster name (kubeconfig is set up on the tools host when provided)')
+    string(name: 'SSH_CREDENTIALS_ID',  defaultValue: 'ec2-ssh-key', description: 'Jenkins SSH key credential ID')
+    string(name: 'AWS_CREDENTIALS_ID',  defaultValue: 'aws-credentials', description: 'Jenkins AWS credentials ID')
+    booleanParam(name: 'CHECK_MODE',    defaultValue: false,        description: 'Dry run (ansible --check)')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Install Ansible Tooling') {
+      steps {
+        sh '''
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install --quiet ansible boto3 botocore
+          ansible-galaxy collection install -r ansible/requirements.yml
+        '''
+      }
+    }
+
+    stage('Lint') {
+      steps {
+        sh '''
+          . .venv/bin/activate
+          cd ansible
+          ansible-playbook playbooks/site.yml --syntax-check -i inventory/hosts.ini.example
+        '''
+      }
+    }
+
+    stage('Run Playbook') {
+      steps {
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: params.AWS_CREDENTIALS_ID],
+          sshUserPrivateKey(credentialsId: params.SSH_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY_FILE', usernameVariable: 'SSH_USER')
+        ]) {
+          sh '''
+            . .venv/bin/activate
+            cd ansible
+            export AWS_REGION="${AWS_REGION}" EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME}"
+            sed -i "s/ap-south-1/${AWS_REGION}/" inventory/aws_ec2.yml
+            CHECK=""
+            if [ "${CHECK_MODE}" = "true" ]; then CHECK="--check"; fi
+            ansible-playbook playbooks/site.yml $CHECK \
+              --private-key "$SSH_KEY_FILE" -u "$SSH_USER"
+          '''
+        }
+      }
+    }
+
+    stage('Verify Configuration') {
+      when { expression { !params.CHECK_MODE } }
+      steps {
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: params.AWS_CREDENTIALS_ID],
+          sshUserPrivateKey(credentialsId: params.SSH_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY_FILE', usernameVariable: 'SSH_USER')
+        ]) {
+          sh '''
+            . .venv/bin/activate
+            cd ansible
+            ansible-playbook playbooks/verify.yml --private-key "$SSH_KEY_FILE" -u "$SSH_USER"
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    failure { echo 'Ansible run failed: check SSH reachability (security group / admin_cidr) and the instance state.' }
+    always  { cleanWs(deleteDirs: true, notFailBuild: true) }
+  }
+}

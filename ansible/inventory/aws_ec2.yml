@@ -1,0 +1,16 @@
+# Dynamic inventory: finds the tools host created by Terraform via its tags.
+# Requires boto3/botocore and AWS credentials (Jenkins instance role or credentials binding).
+plugin: amazon.aws.aws_ec2
+regions:
+  - ap-south-1
+filters:
+  tag:Project: shopnow
+  tag:Role: tools
+  instance-state-name: running
+hostnames:
+  - ip-address
+compose:
+  ansible_host: public_ip_address
+keyed_groups:
+  - key: tags.Role
+    prefix: role

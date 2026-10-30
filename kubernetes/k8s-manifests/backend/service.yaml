@@ -1,0 +1,16 @@
+# The frontend/admin nginx configs proxy to "backend-service:5000", so this name and port must not change.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: ${NAMESPACE}
+  labels:
+    app: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http

@@ -1,0 +1,12 @@
+node_modules/
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+tfplan.txt
+terraform.tfvars
+.venv/
+rendered/
+monitoring/values.rendered.yaml
+tf-outputs.json
+*.pem

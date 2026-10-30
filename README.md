@@ -351,3 +351,9 @@ kubectl logs backend-746cc99cd-cqrgf -n shopnow-demo --previous # If no details 
 
 ---
 
+
+---
+
+## CI/CD, Terraform, Ansible and Monitoring
+
+See [PIPELINE.md](PIPELINE.md) for the end-to-end Jenkins pipeline (Terraform, Ansible, EKS deployment, Prometheus/Grafana).

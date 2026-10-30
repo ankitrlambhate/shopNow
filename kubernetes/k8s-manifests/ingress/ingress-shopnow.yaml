@@ -1,0 +1,32 @@
+# Path-based routing through the ingress-nginx controller (installed by scripts/install-cluster-addons.sh).
+# The React apps are built with PUBLIC_URL=/<prefix> (frontend) and /<prefix>-admin (admin), so the prefix is
+# stripped here with a rewrite and the nginx inside each container serves from "/".
+#   /<prefix>/...        -> frontend-service  (and /<prefix>/api/*  -> frontend nginx -> backend-service)
+#   /<prefix>-admin/...  -> admin-service     (and /<prefix>-admin/api/* -> admin nginx -> backend-service)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shopnow-ingress
+  namespace: ${NAMESPACE}
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /${APP_PATH_PREFIX}-admin(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: admin-service
+                port:
+                  number: 80
+          - path: /${APP_PATH_PREFIX}(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: 80

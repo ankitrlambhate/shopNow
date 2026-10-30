@@ -1,0 +1,151 @@
+# Template: ${NAMESPACE} is replaced by the monitoring job (sed).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shopnow-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: shopnow.application
+      rules:
+        - alert: BackendDown
+          expr: up{job="backend-service"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Backend pod {{ $labels.pod }} is not scrapeable / down"
+
+        - alert: BackendNoTargets
+          expr: absent(up{job="backend-service"})
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Prometheus sees no backend targets (deployment missing or ServiceMonitor broken)"
+
+        - alert: BackendHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{namespace="${NAMESPACE}",status=~"5.."}[5m]))
+              /
+            sum(rate(http_requests_total{namespace="${NAMESPACE}"}[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "More than 5% of backend requests are failing with 5xx"
+
+        - alert: BackendHighLatencyP95
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(http_request_duration_seconds_bucket{namespace="${NAMESPACE}"}[5m]))) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Backend p95 latency above 500ms"
+
+        - alert: ShopnowPodCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total{namespace="${NAMESPACE}"}[15m]) > 3
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ $labels.pod }} restarted more than 3 times in 15 minutes"
+
+        - alert: ShopnowDeploymentReplicasMismatch
+          expr: |
+            kube_deployment_status_replicas_available{namespace="${NAMESPACE}"}
+              < kube_deployment_spec_replicas{namespace="${NAMESPACE}"}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Deployment {{ $labels.deployment }} has fewer available replicas than desired"
+
+        - alert: ShopnowHPAMaxedOut
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{namespace="${NAMESPACE}"}
+              == kube_horizontalpodautoscaler_spec_max_replicas{namespace="${NAMESPACE}"}
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "HPA {{ $labels.horizontalpodautoscaler }} has been at max replicas for 15 minutes"
+
+        - alert: IngressHighErrorRate
+          expr: |
+            sum(rate(nginx_ingress_controller_requests{status=~"5.."}[5m]))
+              /
+            sum(rate(nginx_ingress_controller_requests[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "More than 5% of requests through the ingress return 5xx"
+
+    - name: shopnow.database
+      rules:
+        - alert: MongoNotReady
+          expr: kube_statefulset_status_replicas_ready{namespace="${NAMESPACE}",statefulset="mongo"} < 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "MongoDB StatefulSet has no ready pod"
+
+        - alert: MongoVolumeAlmostFull
+          expr: |
+            kubelet_volume_stats_available_bytes{namespace="${NAMESPACE}",persistentvolumeclaim=~"mongo-data.*"}
+              / kubelet_volume_stats_capacity_bytes{namespace="${NAMESPACE}",persistentvolumeclaim=~"mongo-data.*"} < 0.15
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "MongoDB volume has less than 15% free space"
+
+    - name: infra.rules
+      rules:
+        - alert: NodeHighCPU
+          expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CPU above 85% on {{ $labels.instance }}"
+
+        - alert: NodeHighMemory
+          expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Memory above 90% on {{ $labels.instance }}"
+
+        - alert: NodeDiskAlmostFull
+          expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 10
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Less than 10% disk free on {{ $labels.instance }}"
+
+    - name: jenkins.rules
+      rules:
+        - alert: JenkinsDown
+          expr: up{job="jenkins"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Jenkins is not reachable by Prometheus"
+
+        - alert: JenkinsJobFailing
+          expr: default_jenkins_builds_last_build_result_ordinal == 2
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Last build of {{ $labels.jenkins_job }} failed"

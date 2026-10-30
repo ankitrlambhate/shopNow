@@ -1,0 +1,106 @@
+# Installed by jenkins/Jenkinsfile.monitoring:
+#   helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     -n monitoring --create-namespace -f monitoring/values.rendered.yaml \
+#     --set grafana.adminPassword=... --set grafana.service.type=<ClusterIP|LoadBalancer>
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    # Pick up ServiceMonitors / PrometheusRules from any namespace (the shopNow ones live in "monitoring")
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 1536Mi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    additionalScrapeConfigs:
+      # Jenkins "Prometheus metrics" plugin endpoint. Removed automatically when JENKINS_HOST is not provided.
+      - job_name: jenkins
+        metrics_path: /prometheus
+        scheme: https
+        static_configs:
+          - targets: ["JENKINS_HOST"]
+      # node_exporter on the Ansible-configured tools host. Removed automatically when no IP is provided.
+      - job_name: bastion-node
+        static_configs:
+          - targets: ["BASTION_PRIVATE_IP:9100"]
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+  config:
+    route:
+      receiver: default
+      group_by: ["alertname", "namespace"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        # Critical alerts trigger a Jenkins job (Generic Webhook Trigger plugin, token "alertmanager").
+        # Removed automatically when JENKINS_HOST is not provided.
+        - matchers:
+            - severity="critical"
+          receiver: jenkins-webhook
+    receivers:
+      - name: default
+      - name: jenkins-webhook
+        webhook_configs:
+          - url: "https://JENKINS_HOST/generic-webhook-trigger/invoke?token=alertmanager"
+            send_resolved: true
+
+grafana:
+  persistence:
+    enabled: true
+    storageClassName: gp3
+    size: 5Gi
+  service:
+    type: ClusterIP # overridden by the GRAFANA_SERVICE_TYPE job parameter
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+  # Community dashboards downloaded by Grafana at start-up (needs outbound internet through the NAT gateway):
+  #   1860 = Node Exporter Full, 9614 = NGINX Ingress Controller, 9964 = Jenkins performance
+  dashboards:
+    default:
+      node-exporter-full:
+        gnetId: 1860
+        revision: 37
+        datasource: Prometheus
+      nginx-ingress:
+        gnetId: 9614
+        revision: 1
+        datasource: Prometheus
+      jenkins-performance:
+        gnetId: 9964
+        revision: 1
+        datasource: Prometheus
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: default
+          orgId: 1
+          folder: Community
+          type: file
+          disableDeletion: false
+          options:
+            path: /var/lib/grafana/dashboards/default

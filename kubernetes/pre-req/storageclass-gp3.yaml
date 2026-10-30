@@ -1,0 +1,14 @@
+# gp3 EBS storage class for MongoDB / Prometheus / Grafana volumes.
+# Requires the aws-ebs-csi-driver add-on (created by Terraform in terraform/eks.tf).
+# Not marked as default on purpose: EKS already ships a default gp2 class and two defaults conflict.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  encrypted: "true"
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete

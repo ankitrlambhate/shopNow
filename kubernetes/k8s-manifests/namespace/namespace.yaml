@@ -1,0 +1,9 @@
+# NOTE: manifests in this folder are templates. The Jenkins pipeline renders them with
+#   envsubst '${NAMESPACE} ${ECR_REGISTRY} ${ECR_NAMESPACE} ${IMAGE_TAG} ${APP_PATH_PREFIX}'
+# (see scripts/render-manifests.sh). Do not `kubectl apply` them directly without rendering.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/part-of: shopnow

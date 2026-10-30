@@ -1,0 +1,137 @@
+// Installs/updates Prometheus + Grafana + Alertmanager (kube-prometheus-stack) on EKS and loads the shopNow
+// alert rules, ServiceMonitors and Grafana dashboard (Sprint 5).
+// Jenkins job name suggestion: monitoring-setup   (Script Path: jenkins/Jenkinsfile.monitoring)
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    timeout(time: 30, unit: 'MINUTES')
+  }
+
+  parameters {
+    string(name: 'AWS_REGION',          defaultValue: 'ap-south-1',      description: 'AWS region')
+    string(name: 'EKS_CLUSTER_NAME',    defaultValue: 'shopnow-dev-eks', description: 'EKS cluster name')
+    string(name: 'NAMESPACE',           defaultValue: 'shopnow-demo',    description: 'Application namespace to monitor')
+    string(name: 'JENKINS_HOST',        defaultValue: '',                description: 'Hero Vired Jenkins hostname WITHOUT https:// (enables the Jenkins scrape job and the Alertmanager webhook). Leave empty to skip. Needs the "Prometheus metrics" plugin on Jenkins.')
+    string(name: 'BASTION_PRIVATE_IP',  defaultValue: '',                description: 'Private IP of the Ansible-configured tools host (node_exporter target). Optional.')
+    choice(name: 'GRAFANA_SERVICE_TYPE', choices: ['LoadBalancer', 'ClusterIP'], description: 'LoadBalancer = public URL (extra cost); ClusterIP = use kubectl port-forward')
+    string(name: 'AWS_CREDENTIALS_ID',  defaultValue: 'aws-credentials', description: 'Jenkins AWS credentials ID')
+    password(name: 'GRAFANA_ADMIN_PASSWORD', defaultValue: '',           description: 'Grafana admin password')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        script {
+          if (!params.GRAFANA_ADMIN_PASSWORD?.trim()) { error 'GRAFANA_ADMIN_PASSWORD is required' }
+        }
+      }
+    }
+
+    stage('Prepare Values') {
+      steps {
+        sh '''
+          cp monitoring/kube-prometheus-stack-values.yaml monitoring/values.rendered.yaml
+          python3 - <<'PY'
+import os, yaml
+p = "monitoring/values.rendered.yaml"
+d = yaml.safe_load(open(p))
+spec = d["prometheus"]["prometheusSpec"]
+am = d["alertmanager"]["config"]
+jenkins = os.environ.get("JENKINS_HOST", "").strip()
+bastion = os.environ.get("BASTION_PRIVATE_IP", "").strip()
+
+def keep(cfg):
+    name = cfg["job_name"]
+    if name == "jenkins":
+        if not jenkins:
+            return False
+        cfg["static_configs"][0]["targets"] = [jenkins]
+    if name == "bastion-node":
+        if not bastion:
+            return False
+        cfg["static_configs"][0]["targets"] = [bastion + ":9100"]
+    return True
+
+spec["additionalScrapeConfigs"] = [c for c in spec["additionalScrapeConfigs"] if keep(c)]
+if jenkins:
+    for r in am["receivers"]:
+        for w in r.get("webhook_configs", []):
+            w["url"] = w["url"].replace("JENKINS_HOST", jenkins)
+else:
+    am["route"]["routes"] = []
+    am["receivers"] = [r for r in am["receivers"] if r["name"] == "default"]
+yaml.safe_dump(d, open(p, "w"), sort_keys=False)
+print("values rendered (jenkins=%s, bastion=%s)" % (bool(jenkins), bool(bastion)))
+PY
+          for f in alert-rules servicemonitors; do
+            sed "s/\\${NAMESPACE}/$NAMESPACE/g" monitoring/$f.yaml > monitoring/$f.rendered.yaml
+          done
+        '''
+      }
+    }
+
+    stage('Helm Install Monitoring Stack') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: params.AWS_CREDENTIALS_ID]]) {
+          sh '''
+            export AWS_DEFAULT_REGION=$AWS_REGION
+            aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER_NAME
+            kubectl apply -f kubernetes/pre-req/storageclass-gp3.yaml
+            helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+            helm repo update
+            helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+              -n monitoring --create-namespace \
+              -f monitoring/values.rendered.yaml \
+              --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD" \
+              --set grafana.service.type="$GRAFANA_SERVICE_TYPE" \
+              --wait --timeout 15m
+          '''
+        }
+      }
+    }
+
+    stage('Apply Rules, ServiceMonitors, Dashboard') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: params.AWS_CREDENTIALS_ID]]) {
+          sh '''
+            export AWS_DEFAULT_REGION=$AWS_REGION
+            kubectl apply -f monitoring/alert-rules.rendered.yaml
+            kubectl apply -f monitoring/servicemonitors.rendered.yaml
+            kubectl apply -f monitoring/grafana-dashboard-shopnow.yaml
+          '''
+        }
+      }
+    }
+
+    stage('Verify') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: params.AWS_CREDENTIALS_ID]]) {
+          sh '''
+            export AWS_DEFAULT_REGION=$AWS_REGION
+            kubectl -n monitoring rollout status deployment/kube-prometheus-stack-grafana --timeout=300s
+            kubectl -n monitoring get pods
+            kubectl -n monitoring get prometheusrule,servicemonitor
+            echo "Grafana user: admin"
+            if [ "$GRAFANA_SERVICE_TYPE" = "LoadBalancer" ]; then
+              for i in $(seq 1 30); do
+                H=$(kubectl -n monitoring get svc kube-prometheus-stack-grafana -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+                [ -n "$H" ] && break; sleep 10
+              done
+              echo "Grafana URL: http://$H"
+            else
+              echo "Grafana: kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80"
+            fi
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    always { cleanWs(deleteDirs: true, notFailBuild: true) }
+  }
+}

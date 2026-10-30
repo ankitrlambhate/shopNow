@@ -1,0 +1,24 @@
+---
+- name: Configure the tools / bastion host
+  hosts: role_tools
+  become: true
+  vars:
+    aws_region: "{{ lookup('env', 'AWS_REGION') | default('ap-south-1', true) }}"
+    eks_cluster_name: "{{ lookup('env', 'EKS_CLUSTER_NAME') | default('', true) }}"
+  roles:
+    - common
+    - docker
+    - kubectl
+    - awscli
+    - helm
+    - node_exporter
+
+  post_tasks:
+    - name: Configure kubeconfig for the ubuntu user when a cluster name is supplied
+      ansible.builtin.command: >
+        aws eks update-kubeconfig --region {{ aws_region }} --name {{ eks_cluster_name }}
+      become: false
+      environment:
+        HOME: /home/ubuntu
+      when: eks_cluster_name | length > 0
+      changed_when: true

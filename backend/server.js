@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
+const client = require('prom-client');
 
 // Load environment variables
 dotenv.config();
@@ -21,6 +22,37 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.static('public'));
+
+// Prometheus metrics (scraped by the monitoring stack through a ServiceMonitor)
+const metricsRegistry = new client.Registry();
+client.collectDefaultMetrics({ register: metricsRegistry });
+
+const httpRequestsTotal = new client.Counter({
+  name: 'http_requests_total',
+  help: 'Total HTTP requests',
+  labelNames: ['method', 'route', 'status'],
+  registers: [metricsRegistry],
+});
+
+const httpRequestDuration = new client.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'HTTP request duration in seconds',
+  labelNames: ['method', 'route', 'status'],
+  buckets: [0.005, 0.01, 0.05, 0.1, 0.5, 1, 2, 5],
+  registers: [metricsRegistry],
+});
+
+app.use((req, res, next) => {
+  const stopTimer = httpRequestDuration.startTimer();
+  res.on('finish', () => {
+    // Use the route pattern (e.g. /api/products/:id), not the raw path, to keep label cardinality low
+    const route = req.route ? req.route.path : 'unmatched';
+    const labels = { method: req.method, route, status: res.statusCode };
+    httpRequestsTotal.inc(labels);
+    stopTimer(labels);
+  });
+  next();
+});
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/shopnow', {
@@ -178,6 +210,11 @@ app.get('/', (req, res) => {
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'ShopNow API is running' });
+});
+
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', metricsRegistry.contentType);
+  res.end(await metricsRegistry.metrics());
 });
 
 // Products Routes
@@ -603,10 +640,18 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`ShopNow API server running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/api/health`);
-});
+// Start server only when run directly (so tests can import the app without opening a port)
+if (require.main === module) {
+  const server = app.listen(PORT, () => {
+    console.log(`ShopNow API server running on port ${PORT}`);
+    console.log(`Health check: http://localhost:${PORT}/api/health`);
+  });
+
+  // Graceful shutdown so Kubernetes rolling updates do not drop in-flight requests
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down');
+    server.close(() => mongoose.connection.close(false).finally(() => process.exit(0)));
+  });
+}
 
 module.exports = app;
