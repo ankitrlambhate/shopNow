@@ -17,7 +17,7 @@ pipeline {
     string(name: 'JENKINS_HOST',        defaultValue: '',                description: 'Hero Vired Jenkins hostname WITHOUT https:// (enables the Jenkins scrape job and the Alertmanager webhook). Leave empty to skip. Needs the "Prometheus metrics" plugin on Jenkins.')
     string(name: 'BASTION_PRIVATE_IP',  defaultValue: '',                description: 'Private IP of the Ansible-configured tools host (node_exporter target). Optional.')
     choice(name: 'GRAFANA_SERVICE_TYPE', choices: ['LoadBalancer', 'ClusterIP'], description: 'LoadBalancer = public URL (extra cost); ClusterIP = use kubectl port-forward')
-    string(name: 'AWS_CREDENTIALS_ID',  defaultValue: 'aws-credentials', description: 'Jenkins AWS credentials ID')
+    string(name: 'AWS_CREDENTIALS_ID',  defaultValue: 'ankitlambhate-aws-credentials', description: 'Jenkins AWS credentials ID')
     password(name: 'GRAFANA_ADMIN_PASSWORD', defaultValue: '',           description: 'Grafana admin password')
   }
 

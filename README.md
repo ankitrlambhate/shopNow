@@ -91,8 +91,8 @@ The load balancer DNS name can take 2-3 minutes to start resolving. `/shopnow` i
 
 | ID | Kind | Value |
 |---|---|---|
-| `aws-credentials` | AWS Credentials | your access key and secret |
-| `ec2-ssh-key` | SSH Username with private key | username `ubuntu`, contents of your `.pem` |
+| `ankitlambhate-aws-credentials` | AWS Credentials | your access key and secret |
+| `ankit-ec2-ssh-key` | SSH Username with private key | username `ubuntu`, contents of your `.pem` |
 | `shopnow-mongo-app-password` | Secret text | letters and digits only |
 | `shopnow-mongo-root-password` | Secret text | letters and digits only |
 
@@ -181,6 +181,7 @@ now uses `/api/health`; admin nginx now proxies `/api/` to the backend. The `ary
 | `key pair ... does not exist` | Create it in the EC2 console in the same region as `AWS_REGION` |
 | Cannot reach the cluster / `kubectl` times out | Your public IP changed: set `ADMIN_CIDR=<new-ip>/32` and run `./run.sh infra` again |
 | SSH to the tools host times out (Ansible) | Same cause: `ADMIN_CIDR` does not contain your current IP |
+| Ansible cannot find the `common` role on WSL under `/mnt/c` | `./run.sh configure` now sets the role path explicitly; if running Ansible manually, use `ANSIBLE_ROLES_PATH="$PWD/ansible/roles" ansible-playbook ...` from the repository root |
 | Backend `CrashLoopBackOff`, "MongoDB connection error" | Wait for `mongo-0` Ready: `kubectl -n shopnow-demo get pods`; then `kubectl -n shopnow-demo rollout restart deploy/backend` |
 | `PVC Pending` | EBS CSI add-on not ACTIVE yet: `aws eks describe-addon --cluster-name shopnow-dev-eks --addon-name aws-ebs-csi-driver` |
 | HPA shows `<unknown>` | metrics-server add-on not ACTIVE yet (wait a few minutes) |

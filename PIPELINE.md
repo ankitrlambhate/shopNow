@@ -62,8 +62,8 @@ Jenkins ▶ Manage Jenkins ▶ Credentials ▶ add:
 
 | ID | Kind | Value |
 |---|---|---|
-| `aws-credentials` | AWS Credentials | access key / secret |
-| `ec2-ssh-key` | SSH Username with private key | user `ubuntu`, your key pair's private key |
+| `ankitlambhate-aws-credentials` | AWS Credentials | access key / secret |
+| `ankit-ec2-ssh-key` | SSH Username with private key | user `ubuntu`, your key pair's private key |
 | `shopnow-mongo-app-password` | Secret text | alphanumeric password |
 | `shopnow-mongo-root-password` | Secret text | alphanumeric password |
 

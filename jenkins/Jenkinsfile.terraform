@@ -18,7 +18,7 @@ pipeline {
     string(name: 'TF_LOCK_TABLE',    defaultValue: 'shopnow-tf-lock', description: 'DynamoDB lock table')
     string(name: 'SSH_KEY_NAME',     defaultValue: '',             description: 'Existing EC2 key pair name')
     string(name: 'ADMIN_CIDR',       defaultValue: '0.0.0.0/0',    description: 'CIDR allowed to SSH / reach the EKS API (tighten this!)')
-    string(name: 'AWS_CREDENTIALS_ID', defaultValue: 'aws-credentials', description: 'Jenkins AWS credentials ID')
+    string(name: 'AWS_CREDENTIALS_ID', defaultValue: 'ankitlambhate-aws-credentials', description: 'Jenkins AWS credentials ID')
     booleanParam(name: 'AUTO_APPROVE', defaultValue: false,        description: 'Skip the manual approval step (apply/destroy)')
     booleanParam(name: 'TRIGGER_ANSIBLE', defaultValue: true,      description: 'Run the Ansible job after a successful apply')
   }

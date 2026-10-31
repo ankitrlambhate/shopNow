@@ -178,6 +178,7 @@ EOF
 
   log "Ansible: configure the tools host (Docker, kubectl, AWS CLI, helm, node_exporter, SSH hardening)"
   export ANSIBLE_INVENTORY_ENABLED=ini ANSIBLE_HOST_KEY_CHECKING=False EKS_CLUSTER_NAME="$CLUSTER_NAME"
+  export ANSIBLE_ROLES_PATH="$ROOT/ansible/roles${ANSIBLE_ROLES_PATH:+:$ANSIBLE_ROLES_PATH}"
   ( cd "$ROOT/ansible"
     ansible-playbook playbooks/site.yml   -i "$ROOT/.run/inventory.ini"
     log "Ansible: verify the configuration"

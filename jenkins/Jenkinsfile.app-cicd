@@ -2,7 +2,7 @@
 // Jenkins job name suggestion: app-cicd   (type: Pipeline script from SCM, Script Path: jenkins/Jenkinsfile.app-cicd)
 //
 // Jenkins credentials needed:
-//   aws-credentials               AWS Credentials (skip by ticking USE_INSTANCE_ROLE when the agent has an IAM role)
+//   ankitlambhate-aws-credentials AWS Credentials (skip by ticking USE_INSTANCE_ROLE when the agent has an IAM role)
 //   shopnow-mongo-app-password    Secret text, alphanumeric (password of the MongoDB application user)
 //   shopnow-mongo-root-password   Secret text, alphanumeric (password of the MongoDB root user)
 // Agent needs: docker, aws, kubectl, helm, python3 (see jenkins/install-jenkins-ec2.sh --tools-only)
@@ -28,7 +28,7 @@ pipeline {
     string(name: 'ECR_NAMESPACE',      defaultValue: 'shopnow',           description: 'ECR repository prefix: <prefix>/frontend, /backend, /admin (Terraform var ecr_namespace)')
     string(name: 'APP_PATH_PREFIX',    defaultValue: 'shopnow',           description: 'URL prefix baked into the React apps: /<prefix> and /<prefix>-admin (the "USER_NAME" build arg)')
     string(name: 'NAMESPACE',          defaultValue: 'shopnow-demo',      description: 'Kubernetes namespace')
-    string(name: 'AWS_CREDENTIALS_ID', defaultValue: 'aws-credentials',   description: 'Jenkins AWS credentials ID')
+    string(name: 'AWS_CREDENTIALS_ID', defaultValue: 'ankitlambhate-aws-credentials', description: 'Jenkins AWS credentials ID')
     booleanParam(name: 'USE_INSTANCE_ROLE', defaultValue: false,          description: 'Use the agent IAM role instead of Jenkins AWS credentials')
     string(name: 'MONGO_APP_PW_ID',    defaultValue: 'shopnow-mongo-app-password',  description: 'Jenkins secret-text ID for the MongoDB app user password')
     string(name: 'MONGO_ROOT_PW_ID',   defaultValue: 'shopnow-mongo-root-password', description: 'Jenkins secret-text ID for the MongoDB root password')

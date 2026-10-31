@@ -4,7 +4,23 @@
 set -euo pipefail
 
 REGION="${1:-ap-south-1}"
-ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+export AWS_DEFAULT_REGION="$REGION"
+
+command -v aws >/dev/null 2>&1 || { echo "ERROR: the aws CLI is not installed or not on PATH." >&2; exit 1; }
+
+echo "Checking AWS credentials (region $REGION)..."
+ERR_FILE="$(mktemp)"
+if ! ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text \
+      --cli-connect-timeout 10 --cli-read-timeout 20 2>"$ERR_FILE")" || ! [[ "$ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+  echo "ERROR: could not get your AWS account id. AWS CLI said:" >&2
+  cat "$ERR_FILE" >&2
+  rm -f "$ERR_FILE"
+  echo "Fix: run 'aws configure' (access key, secret, region) or export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY," >&2
+  echo "then 'aws sts get-caller-identity' must print your account details before you re-run this script." >&2
+  exit 1
+fi
+rm -f "$ERR_FILE"
+
 BUCKET="${2:-shopnow-tfstate-${ACCOUNT_ID}}"
 TABLE="shopnow-tf-lock"
 

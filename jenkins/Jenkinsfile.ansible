@@ -3,8 +3,8 @@
 // Job name MUST be "config-ansible" (the Terraform job triggers it by that name).
 //
 // Required Jenkins credentials:
-//   ec2-ssh-key        : "SSH Username with private key" (username: ubuntu) matching the EC2 key pair
-//   aws-credentials    : AWS credentials binding
+//   ankit-ec2-ssh-key  : "SSH Username with private key" (username: ubuntu) matching the EC2 key pair
+//   ankitlambhate-aws-credentials : AWS credentials binding
 pipeline {
   agent any
 
@@ -17,8 +17,8 @@ pipeline {
   parameters {
     string(name: 'AWS_REGION',          defaultValue: 'ap-south-1', description: 'AWS region')
     string(name: 'EKS_CLUSTER_NAME',    defaultValue: '',           description: 'EKS cluster name (kubeconfig is set up on the tools host when provided)')
-    string(name: 'SSH_CREDENTIALS_ID',  defaultValue: 'ec2-ssh-key', description: 'Jenkins SSH key credential ID')
-    string(name: 'AWS_CREDENTIALS_ID',  defaultValue: 'aws-credentials', description: 'Jenkins AWS credentials ID')
+    string(name: 'SSH_CREDENTIALS_ID',  defaultValue: 'ankit-ec2-ssh-key', description: 'Jenkins SSH key credential ID')
+    string(name: 'AWS_CREDENTIALS_ID',  defaultValue: 'ankitlambhate-aws-credentials', description: 'Jenkins AWS credentials ID')
     booleanParam(name: 'CHECK_MODE',    defaultValue: false,        description: 'Dry run (ansible --check)')
   }
 
