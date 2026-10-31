@@ -25,9 +25,7 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
-        script {
-          if (!params.GRAFANA_ADMIN_PASSWORD?.trim()) { error 'GRAFANA_ADMIN_PASSWORD is required' }
-        }
+        sh 'test -n "$GRAFANA_ADMIN_PASSWORD" || { echo "GRAFANA_ADMIN_PASSWORD is required" >&2; exit 1; }'
       }
     }
 
