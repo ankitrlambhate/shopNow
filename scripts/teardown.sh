@@ -3,7 +3,7 @@
 # Order matters: Kubernetes-created load balancers and EBS volumes must be removed BEFORE `terraform destroy`,
 # otherwise they block VPC deletion and keep billing.
 # Usage: SSH_KEY_NAME=<key-pair> ./scripts/teardown.sh <cluster-name> [region]
-# Optional env: NAMESPACE (shopnow-demo)
+# Optional env: NAMESPACE (shopnow-demo)  ENVIRONMENT (dev: must match the environment used when applying)
 set -uo pipefail
 
 CLUSTER="${1:?cluster name required}"
@@ -34,6 +34,7 @@ sleep 90
 cd "$(dirname "$0")/../terraform"
 terraform destroy -auto-approve \
   -var="ssh_key_name=${SSH_KEY_NAME:?set SSH_KEY_NAME}" \
-  -var="aws_region=$REGION"
+  -var="aws_region=$REGION" \
+  -var="environment=${ENVIRONMENT:-dev}"
 
 echo "Done. The Terraform state bucket and DynamoDB lock table were kept on purpose; delete them manually if no longer needed."

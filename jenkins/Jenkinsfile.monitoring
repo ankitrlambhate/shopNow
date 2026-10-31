@@ -34,42 +34,8 @@ pipeline {
     stage('Prepare Values') {
       steps {
         sh '''
-          cp monitoring/kube-prometheus-stack-values.yaml monitoring/values.rendered.yaml
-          python3 - <<'PY'
-import os, yaml
-p = "monitoring/values.rendered.yaml"
-d = yaml.safe_load(open(p))
-spec = d["prometheus"]["prometheusSpec"]
-am = d["alertmanager"]["config"]
-jenkins = os.environ.get("JENKINS_HOST", "").strip()
-bastion = os.environ.get("BASTION_PRIVATE_IP", "").strip()
-
-def keep(cfg):
-    name = cfg["job_name"]
-    if name == "jenkins":
-        if not jenkins:
-            return False
-        cfg["static_configs"][0]["targets"] = [jenkins]
-    if name == "bastion-node":
-        if not bastion:
-            return False
-        cfg["static_configs"][0]["targets"] = [bastion + ":9100"]
-    return True
-
-spec["additionalScrapeConfigs"] = [c for c in spec["additionalScrapeConfigs"] if keep(c)]
-if jenkins:
-    for r in am["receivers"]:
-        for w in r.get("webhook_configs", []):
-            w["url"] = w["url"].replace("JENKINS_HOST", jenkins)
-else:
-    am["route"]["routes"] = []
-    am["receivers"] = [r for r in am["receivers"] if r["name"] == "default"]
-yaml.safe_dump(d, open(p, "w"), sort_keys=False)
-print("values rendered (jenkins=%s, bastion=%s)" % (bool(jenkins), bool(bastion)))
-PY
-          for f in alert-rules servicemonitors; do
-            sed "s/\\${NAMESPACE}/$NAMESPACE/g" monitoring/$f.yaml > monitoring/$f.rendered.yaml
-          done
+          chmod +x scripts/*.sh
+          ./scripts/prepare-monitoring.sh
         '''
       }
     }

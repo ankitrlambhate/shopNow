@@ -1,7 +1,8 @@
 # shopNow: End-to-End DevOps Pipeline (Jenkins + Docker + Terraform + Ansible + EKS + Prometheus/Grafana)
 
 This adds the CI/CD, infrastructure and monitoring layers on top of the original shopNow MERN app
-(`frontend`, `admin`, `backend`, MongoDB). The original `README.md` is untouched. Jenkins (Hero Vired server) orchestrates everything.
+(`frontend`, `admin`, `backend`, MongoDB). **Start with `README.md`** (execution guide, including the one-command `run.sh`);
+this file is the detailed reference for the Jenkins route. Jenkins (Hero Vired server) orchestrates everything.
 
 ## 1. Architecture
 
@@ -35,7 +36,7 @@ This adds the CI/CD, infrastructure and monitoring layers on top of the original
 | `backend/Dockerfile` | HEALTHCHECK now calls `/api/health` | `/health` does not exist in the API (it returned 404) |
 | `admin/nginx/default.conf` | Added `location /api/` proxy to `backend-service` | The admin app calls `<PUBLIC_URL>/api/...`, which previously fell through to `index.html` |
 
-The original README mentions `kubernetes/`, `jenkins/` and `scripts/` folders that are not in the repository; they are created here.
+The original README mentioned `kubernetes/`, `jenkins/` and `scripts/` folders (and Helm charts and ArgoCD) that were not in the repository. The folders are created here; Helm charts and ArgoCD are not part of the assignment and were dropped.
 
 ## 3. Repository layout (new parts)
 
