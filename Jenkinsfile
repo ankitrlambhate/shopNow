@@ -71,8 +71,8 @@ pipeline {
           if (params.WORKFLOW == 'full' && params.TERRAFORM_ACTION != 'apply') {
             error 'The full workflow requires TERRAFORM_ACTION=apply'
           }
-          if (['full', 'monitoring'].contains(params.WORKFLOW) && !params.GRAFANA_ADMIN_PASSWORD?.trim()) {
-            error 'GRAFANA_ADMIN_PASSWORD is required for monitoring'
+          if (['full', 'monitoring'].contains(params.WORKFLOW)) {
+            sh 'test -n "$GRAFANA_ADMIN_PASSWORD" || { echo "GRAFANA_ADMIN_PASSWORD is required for monitoring" >&2; exit 1; }'
           }
         }
       }
