@@ -296,6 +296,12 @@ pipeline {
               docker push $ECR_REGISTRY/$ECR_NAMESPACE/$svc:$IMAGE_TAG
             done
           '''
+          sh '''
+            EP=$(aws eks describe-cluster --region ap-south-1 --name shopnow-dev-eks --query cluster.endpoint --output text)
+            echo "endpoint: $EP"
+            curl -sk -m 15 -o /dev/null -w "HTTP %{http_code} in %{time_total}s\\n" "$EP/version" || echo "CONNECT FAILED"
+            curl -s https://checkip.amazonaws.com
+          '''
         }
       }
     }
