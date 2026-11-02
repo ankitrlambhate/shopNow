@@ -16,7 +16,7 @@ shop (customer app, admin dashboard, Node.js API, MongoDB).
 | Ansible: configure EC2 (Docker, kubectl, AWS CLI, helm, node_exporter) | `ansible/` |
 | Dockerized app, images in ECR | `backend/`, `frontend/`, `admin/` Dockerfiles, 3 ECR repos from Terraform |
 | Kubernetes deployment with health checks and autoscaling | `kubernetes/k8s-manifests/` (probes, HPA, PDB) |
-| Jenkins pipelines (Terraform, then Ansible, then build/deploy, then monitoring) | `jenkins/` |
+| Unified Jenkins pipeline (Terraform, Ansible, build/deploy, monitoring) | `Jenkinsfile` |
 | Prometheus + Grafana + alert rules + Jenkins alerts | `monitoring/` |
 | Tests | `backend/tests/`, `scripts/smoke-test.sh`, `scripts/infra-tests.sh`, `ansible/playbooks/verify.yml` |
 | Cost optimisation | Section 7 |
@@ -24,7 +24,7 @@ shop (customer app, admin dashboard, Node.js API, MongoDB).
 ## 2. Architecture
 
 ```
- git push -> GitHub -> Jenkins (Hero Vired) -> infra-terraform -> config-ansible -> app-cicd -> monitoring-setup
+ git push -> GitHub -> Jenkins (Hero Vired) -> Jenkinsfile (app-cicd or full workflow)
 
  Internet -> AWS Network Load Balancer -> ingress-nginx -+- /<prefix>        -> frontend (nginx) -+
                                                          +- /<prefix>-admin  -> admin (nginx)    -+-> backend-service:5000 -> MongoDB (StatefulSet + EBS)
@@ -39,7 +39,7 @@ shop (customer app, admin dashboard, Node.js API, MongoDB).
 | | **A. `run.sh`** (one command, runs on your machine) | **B. Jenkins** (what the assignment asks for) |
 |---|---|---|
 | Use it for | Getting everything up quickly, testing, debugging | The final demo: Jenkins orchestrates every stage |
-| Steps | `./run.sh all` | Create 5 jobs (Section 5) and run `full-pipeline` |
+| Steps | `./run.sh all` | Create one job (Section 5) and run the `full` workflow |
 
 Both run the same Terraform, Ansible, manifests and scripts and share the same Terraform state, so you can test with A
 and demo with B. Do not run both against the same environment at the same time.
@@ -100,21 +100,21 @@ The load balancer DNS name can take 2-3 minutes to start resolving. `/shopnow` i
 
 **3. State bucket** (once, from any machine with AWS access): `./run.sh backend`. It prints the bucket name (`shopnow-tfstate-<account-id>`).
 
-**4. Create five Pipeline jobs** (New Item, Pipeline, *Pipeline script from SCM*, Git, your fork, branch `main`):
+**4. Create one Pipeline job** (New Item, Pipeline, *Pipeline script from SCM*, Git, your fork, branch `main`) and set **Script Path** to `Jenkinsfile`.
 
-| Job name (exact) | Script Path | Fill in |
+**5. Run the desired workflow** from the build parameters:
+
+| Workflow | What it runs | Key parameters |
 |---|---|---|
-| `infra-terraform` | `jenkins/Jenkinsfile.terraform` | `TF_STATE_BUCKET`, `SSH_KEY_NAME`, `ADMIN_CIDR` (your IP/32 **and** the Jenkins server IP; keep `ACTION=plan` first, then `apply`) |
-| `config-ansible` | `jenkins/Jenkinsfile.ansible` | Nothing: triggered automatically after `infra-terraform` applies |
-| `app-cicd` | `jenkins/Jenkinsfile.app-cicd` | Defaults work (`EKS_CLUSTER_NAME=shopnow-dev-eks`, `APP_PATH_PREFIX=shopnow`). Polls Git every 5 minutes |
-| `monitoring-setup` | `jenkins/Jenkinsfile.monitoring` | `GRAFANA_ADMIN_PASSWORD`, optionally `JENKINS_HOST` |
-| `full-pipeline` | `jenkins/Jenkinsfile.full-pipeline` | `TF_STATE_BUCKET`, `SSH_KEY_NAME`, `ADMIN_CIDR`, `GRAFANA_ADMIN_PASSWORD` |
+| `app-cicd` (default) | Tests, builds, pushes, deploys and smoke-tests the application | Defaults work for `shopnow-dev-eks`; polls Git every 5 minutes |
+| `full` | Terraform apply, Ansible configuration, application CI/CD, then monitoring | `TF_STATE_BUCKET`, `SSH_KEY_NAME`, `ADMIN_CIDR`, `GRAFANA_ADMIN_PASSWORD`; set `TERRAFORM_ACTION=apply` |
+| `terraform` | Terraform plan, apply or destroy; optionally runs Ansible after apply | Set `TF_STATE_BUCKET`, `SSH_KEY_NAME`, `ADMIN_CIDR`, and `TERRAFORM_ACTION`; review the plan before approval |
+| `ansible` | Configures and verifies the tools host | Existing cluster, SSH and AWS credentials |
+| `monitoring` | Installs Prometheus, Grafana, rules and dashboards | `GRAFANA_ADMIN_PASSWORD`, optionally `JENKINS_HOST` |
 
-**5. Run `full-pipeline`.** It runs Terraform, then Ansible, then builds and deploys shopNow, then installs monitoring.
-Later code pushes trigger only `app-cicd` (build, test, push, deploy, smoke test, automatic rollback on failure).
+Later code pushes run the default `app-cicd` workflow (test, build, push, deploy, smoke test, automatic rollback on failure). The older individual Jenkinsfiles remain available for existing Jenkins jobs; new installations only need the root `Jenkinsfile`.
 
-**6. Optional but recommended:** add a GitHub webhook to `https://<jenkins-host>/github-webhook/` for instant builds, and
-uncomment the `mail` or `slackSend` line in `Jenkinsfile.app-cicd` to get failure notifications.
+https://jenkinsacademics.herovired.com/github-webhook/
 
 If Jenkins runs `kubectl` as a different AWS identity than the one that ran Terraform, give it cluster access:
 ```bash
@@ -163,7 +163,8 @@ ansible/                     roles + playbooks (site.yml, verify.yml)
 kubernetes/k8s-manifests/    templated manifests (rendered by scripts/render-manifests.sh)
 kubernetes/pre-req/          gp3 storage class
 monitoring/                  Helm values, alert rules, ServiceMonitors, Grafana dashboard
-jenkins/                     Jenkinsfiles, plugin list, tool installer
+Jenkinsfile                  Unified Jenkins pipeline (also see legacy files in jenkins/)
+jenkins/                     Legacy Jenkinsfiles, plugin list, tool installer
 scripts/                     backend bootstrap, render, secrets, add-ons, smoke/infra tests, teardown
 docs/                        original learning docs
 ```

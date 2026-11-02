@@ -7,11 +7,9 @@ this file is the detailed reference for the Jenkins route. Jenkins (Hero Vired s
 ## 1. Architecture
 
 ```
- git push ─▶ GitHub ─▶ Jenkins (Hero Vired)
-                          ├─ infra-terraform ─▶ VPC, EKS, 3 ECR repos, EC2 tools host, add-ons (state: S3 + DynamoDB)
-                          ├─ config-ansible  ─▶ Docker, kubectl, AWS CLI, helm, node_exporter on the tools host
-                          ├─ app-cicd        ─▶ test ▶ build 3 images ▶ push ECR ▶ deploy to EKS ▶ smoke test
-                          └─ monitoring-setup▶ Prometheus, Grafana, Alertmanager, rules, dashboard
+ git push ─▶ GitHub ─▶ Jenkins (Hero Vired, root Jenkinsfile)
+                          ├─ app-cicd (default) ─▶ test ▶ build 3 images ▶ push ECR ▶ deploy ▶ smoke test
+                          └─ full ─▶ Terraform ▶ Ansible ▶ app-cicd ▶ monitoring
 
  Internet ─▶ NLB ─▶ ingress-nginx ─┬─ /<prefix>        ─▶ frontend (nginx) ─ /api ─▶ backend-service:5000 ─▶ mongo-0.mongo:27017
                                    └─ /<prefix>-admin  ─▶ admin (nginx)    ─ /api ─▶ backend-service:5000
@@ -41,7 +39,8 @@ The original README mentioned `kubernetes/`, `jenkins/` and `scripts/` folders (
 ## 3. Repository layout (new parts)
 
 ```
-jenkins/        Jenkinsfile.{terraform,ansible,app-cicd,monitoring,full-pipeline}, plugins.txt, install-jenkins-ec2.sh
+Jenkinsfile     Unified selectable pipeline for Terraform, Ansible, app CI/CD and monitoring
+jenkins/        Legacy standalone Jenkinsfiles, plugins.txt, install-jenkins-ec2.sh
 terraform/      VPC, EKS (+ add-ons incl. EBS CSI and metrics-server), 3 ECR repos, EC2 tools host, S3 backend config
 ansible/        roles: common, docker, kubectl, awscli, helm, node_exporter; playbooks site.yml + verify.yml
 kubernetes/     k8s-manifests (templated), pre-req/storageclass-gp3.yaml
@@ -67,21 +66,36 @@ Jenkins ▶ Manage Jenkins ▶ Credentials ▶ add:
 | `shopnow-mongo-app-password` | Secret text | alphanumeric password |
 | `shopnow-mongo-root-password` | Secret text | alphanumeric password |
 
-Add a GitHub webhook to `https://<jenkins-host>/github-webhook/` (the app job also polls every 5 minutes as a fallback).
+Add a GitHub webhook to `https://<jenkins-host>/github-webhook/` (the unified job also polls every 5 minutes as a fallback; the default workflow is app CI/CD).
 Try the images locally first: `scripts/build-and-push.sh <registry>/<ns> <tag> <prefix>` or `docker build backend`.
+
+### Using the unified pipeline
+
+Create one Pipeline-from-SCM job for the repository and set its Script Path to `Jenkinsfile`.
+Choose the `WORKFLOW` parameter when starting a build:
+
+| Workflow | Stages |
+|---|---|
+| `app-cicd` (default) | Backend tests, build 3 images, optional Trivy scan, push ECR, deploy and smoke test |
+| `full` | Terraform apply, Ansible, app CI/CD and monitoring, in that order |
+| `terraform` | Terraform plan, apply or destroy; a standalone apply can also run Ansible |
+| `ansible` | Configure and verify the tools host |
+| `monitoring` | Install the monitoring stack and apply its rules and dashboard |
+
+For `full`, set `TERRAFORM_ACTION=apply`, `TF_STATE_BUCKET`, `SSH_KEY_NAME` and `GRAFANA_ADMIN_PASSWORD`. Terraform apply/destroy pauses for approval unless `AUTO_APPROVE` is enabled. The existing per-component pipelines remain available for Jenkins jobs already configured with their script paths.
 
 ### Sprint 2: Terraform
 ```bash
 ./scripts/bootstrap-tf-backend.sh ap-south-1       # prints the state bucket name (once)
 ```
-Jenkins job **infra-terraform** ▶ script path `jenkins/Jenkinsfile.terraform`. Run `ACTION=plan`, then `apply`.
+In the unified job select `WORKFLOW=terraform`, run `TERRAFORM_ACTION=plan`, then `apply`.
 Set `ADMIN_CIDR` to your IP/32 **plus the Jenkins server IP/32** (Jenkins needs the EKS API). Creates ECR repos `shopnow/{frontend,backend,admin}`.
 
 ### Sprint 3: Ansible
-Job **config-ansible** (exact name, Terraform triggers it) ▶ `jenkins/Jenkinsfile.ansible`. Configures the tools host and runs `verify.yml`.
+Ansible runs automatically after a successful Terraform apply when `RUN_ANSIBLE` is enabled; it is also selectable as `WORKFLOW=ansible`.
 
 ### Sprint 4: Application CI/CD
-Job **app-cicd** ▶ `jenkins/Jenkinsfile.app-cicd`. Stages: checkout, backend tests, build 3 images in parallel, optional Trivy scan, push to ECR,
+The default `WORKFLOW=app-cicd` runs checkout, backend tests, build 3 images in parallel, optional Trivy scan, push to ECR,
 install cluster add-ons (gp3 StorageClass + ingress-nginx), render manifests, deploy (secrets ▶ Mongo ▶ backend ▶ frontend/admin ▶ ingress), smoke test.
 On failure the three deployments roll back (`kubectl rollout undo`). MongoDB's app user is created automatically by an init script, so the manual `mongosh createUser` step from the original README is no longer needed.
 
@@ -94,13 +108,13 @@ aws eks associate-access-policy --cluster-name shopnow-dev-eks --principal-arn <
 ```
 
 ### Sprint 5: Monitoring
-Job **monitoring-setup** ▶ `jenkins/Jenkinsfile.monitoring`. Provide `GRAFANA_ADMIN_PASSWORD`; set `JENKINS_HOST` (hostname only) to scrape Jenkins and route critical alerts to a Jenkins webhook job
+Select `WORKFLOW=monitoring` (or use `full`). Provide `GRAFANA_ADMIN_PASSWORD`; set `JENKINS_HOST` (hostname only) to scrape Jenkins and route critical alerts to a Jenkins webhook job
 (needs the *Prometheus metrics* plugin and, for the webhook, *Generic Webhook Trigger*). Grafana user `admin`; the shopNow dashboard loads automatically.
 Alerts (`monitoring/alert-rules.yaml`): backend down / no targets / 5xx rate / p95 latency, crash loops, replica mismatch, HPA maxed out, ingress 5xx, Mongo not ready / volume full, node CPU/memory/disk, Jenkins down / job failing.
 Failed deployments also hit the `post { failure }` block (uncomment `mail` or `slackSend`).
 
 ### Sprint 6: Full automation and tests
-Job **full-pipeline** ▶ `jenkins/Jenkinsfile.full-pipeline` runs Terraform ▶ Ansible ▶ app ▶ monitoring. Tests:
+Select `WORKFLOW=full` to run Terraform ▶ Ansible ▶ app ▶ monitoring in one build. Tests:
 backend `npm test`; `scripts/smoke-test.sh` (frontend, admin, API proxying, products, an order create/fetch/cancel flow, replica counts);
 `scripts/infra-tests.sh <cluster>` (cluster, add-ons, workloads, monitoring, ECR); `ansible/playbooks/verify.yml`.
 
