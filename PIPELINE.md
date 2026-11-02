@@ -55,6 +55,7 @@ Manifests under `kubernetes/k8s-manifests` are templates (`${NAMESPACE}`, `${ECR
 
 **Prerequisites:** AWS account and IAM user/role (EC2, VPC, EKS, ECR, IAM, S3, DynamoDB); an EC2 key pair; your fork of this repo on GitHub;
 the Hero Vired Jenkins URL; and on the Jenkins agent: `docker aws kubectl helm terraform ansible python3` (`sudo jenkins/install-jenkins-ec2.sh --tools-only`).
+For the unified root `Jenkinsfile`, Docker builds the Ansible tooling image, so host Ansible and `python3-venv` are not required.
 
 ### Sprint 1: Jenkins and credentials
 Jenkins ▶ Manage Jenkins ▶ Credentials ▶ add:

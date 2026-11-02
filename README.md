@@ -98,6 +98,8 @@ The load balancer DNS name can take 2-3 minutes to start resolving. `/shopnow` i
 
 **2. Tools on the Jenkins agent:** `docker aws kubectl helm terraform ansible python3` with `pyyaml`. If you cannot install them on the shared server, ask your instructor or run the jobs on your own EC2 agent (`sudo jenkins/install-jenkins-ec2.sh` installs Jenkins plus the tools). Also install the plugins in `jenkins/plugins.txt`.
 
+For the unified root `Jenkinsfile`, Docker builds the Ansible tooling image, so host Ansible and `python3-venv` are not required.
+
 **3. State bucket** (once, from any machine with AWS access): `./run.sh backend`. It prints the bucket name (`shopnow-tfstate-<account-id>`).
 
 **4. Create one Pipeline job** (New Item, Pipeline, *Pipeline script from SCM*, Git, your fork, branch `main`) and set **Script Path** to `Jenkinsfile`.
