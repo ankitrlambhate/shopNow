@@ -173,7 +173,7 @@ pipeline {
       when { expression { runsAnsible() } }
       steps {
         sh '''
-          docker run --rm --network host --user "$(id -u):$(id -g)" \
+          docker run --rm --network host \
             -e HOME=/tmp -e ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg \
             -v "$WORKSPACE:/workspace" -w /workspace/ansible \
             "$ANSIBLE_IMAGE" \
@@ -193,7 +193,7 @@ pipeline {
         withCredentials([sshUserPrivateKey(credentialsId: params.SSH_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY_FILE', usernameVariable: 'SSH_USER')]) {
           withAws {
             sh '''
-              docker run --rm --network host --user "$(id -u):$(id -g)" \
+              docker run --rm --network host \
                 -e HOME=/tmp -e ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg \
                 -e AWS_REGION -e AWS_DEFAULT_REGION -e AWS_ACCESS_KEY_ID \
                 -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
@@ -220,7 +220,7 @@ pipeline {
         withCredentials([sshUserPrivateKey(credentialsId: params.SSH_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY_FILE', usernameVariable: 'SSH_USER')]) {
           withAws {
             sh '''
-              docker run --rm --network host --user "$(id -u):$(id -g)" \
+              docker run --rm --network host \
                 -e HOME=/tmp -e ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg \
                 -e AWS_REGION -e AWS_DEFAULT_REGION -e AWS_ACCESS_KEY_ID \
                 -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN -e SSH_USER \
