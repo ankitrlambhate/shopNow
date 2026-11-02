@@ -55,6 +55,7 @@ pipeline {
         script {
           env.GIT_SHORT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT}"
+          env.ANSIBLE_IMAGE = "shopnow-ansible:${env.BUILD_NUMBER}"
           env.EKS_CLUSTER_NAME = params.WORKFLOW == 'full' ? "shopnow-${params.ENVIRONMENT}-eks" : params.EKS_CLUSTER_NAME
           echo "Image tag: ${env.IMAGE_TAG}"
         }
@@ -72,7 +73,7 @@ pipeline {
             error 'The full workflow requires TERRAFORM_ACTION=apply'
           }
           if (['full', 'monitoring'].contains(params.WORKFLOW)) {
-            sh 'test -n "$GRAFANA_ADMIN_PASSWORD" || { echo "GRAFANA_ADMIN_PASSWORD is required for monitoring" >&2; exit 1; }'
+            sh 'set +x; test -n "$GRAFANA_ADMIN_PASSWORD" || { echo "GRAFANA_ADMIN_PASSWORD is required for monitoring" >&2; exit 1; }'
           }
         }
       }
@@ -164,12 +165,7 @@ pipeline {
     stage('Install Ansible Tooling') {
       when { expression { runsAnsible() } }
       steps {
-        sh '''
-          python3 -m venv .venv
-          . .venv/bin/activate
-          pip install --quiet ansible boto3 botocore
-          ansible-galaxy collection install -r ansible/requirements.yml
-        '''
+        sh 'docker build --pull -f jenkins/ansible.Dockerfile -t "$ANSIBLE_IMAGE" .'
       }
     }
 
@@ -177,9 +173,11 @@ pipeline {
       when { expression { runsAnsible() } }
       steps {
         sh '''
-          . .venv/bin/activate
-          cd ansible
-          ansible-playbook playbooks/site.yml --syntax-check -i inventory/hosts.ini.example
+          docker run --rm --network host --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp -e ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg \
+            -v "$WORKSPACE:/workspace" -w /workspace/ansible \
+            "$ANSIBLE_IMAGE" \
+            ansible-playbook playbooks/site.yml --syntax-check -i inventory/hosts.ini.example
         '''
       }
     }
@@ -195,14 +193,21 @@ pipeline {
         withCredentials([sshUserPrivateKey(credentialsId: params.SSH_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY_FILE', usernameVariable: 'SSH_USER')]) {
           withAws {
             sh '''
-              . .venv/bin/activate
-              cd ansible
-              export EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME}"
-              sed -i "s/ap-south-1/${AWS_REGION}/" inventory/aws_ec2.yml
-              CHECK=""
-              if [ "${CHECK_MODE}" = "true" ]; then CHECK="--check"; fi
-              ansible-playbook playbooks/site.yml $CHECK \
-                --private-key "$SSH_KEY_FILE" -u "$SSH_USER"
+              docker run --rm --network host --user "$(id -u):$(id -g)" \
+                -e HOME=/tmp -e ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg \
+                -e AWS_REGION -e AWS_DEFAULT_REGION -e AWS_ACCESS_KEY_ID \
+                -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+                -e EKS_CLUSTER_NAME -e CHECK_MODE -e SSH_USER \
+                -v "$WORKSPACE:/workspace" \
+                -v "$SSH_KEY_FILE:/tmp/jenkins-ssh-key:ro" \
+                -w /workspace/ansible "$ANSIBLE_IMAGE" \
+                sh -ec '
+                  sed -i "s/ap-south-1/$AWS_REGION/" inventory/aws_ec2.yml
+                  CHECK=""
+                  if [ "$CHECK_MODE" = "true" ]; then CHECK="--check"; fi
+                  ansible-playbook playbooks/site.yml $CHECK \
+                    --private-key /tmp/jenkins-ssh-key -u "$SSH_USER"
+                '
             '''
           }
         }
@@ -215,9 +220,15 @@ pipeline {
         withCredentials([sshUserPrivateKey(credentialsId: params.SSH_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY_FILE', usernameVariable: 'SSH_USER')]) {
           withAws {
             sh '''
-              . .venv/bin/activate
-              cd ansible
-              ansible-playbook playbooks/verify.yml --private-key "$SSH_KEY_FILE" -u "$SSH_USER"
+              docker run --rm --network host --user "$(id -u):$(id -g)" \
+                -e HOME=/tmp -e ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg \
+                -e AWS_REGION -e AWS_DEFAULT_REGION -e AWS_ACCESS_KEY_ID \
+                -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN -e SSH_USER \
+                -v "$WORKSPACE:/workspace" \
+                -v "$SSH_KEY_FILE:/tmp/jenkins-ssh-key:ro" \
+                -w /workspace/ansible "$ANSIBLE_IMAGE" \
+                ansible-playbook playbooks/verify.yml \
+                  --private-key /tmp/jenkins-ssh-key -u "$SSH_USER"
             '''
           }
         }
@@ -404,6 +415,7 @@ PY
       steps {
         withAws {
           sh '''
+            set +x
             aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER_NAME
             kubectl apply -f kubernetes/pre-req/storageclass-gp3.yaml
             helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -476,7 +488,7 @@ PY
       }
     }
     always {
-      sh 'docker image prune -f || true'
+      sh 'docker image rm "$ANSIBLE_IMAGE" || true; docker image prune -f || true'
       cleanWs(deleteDirs: true, notFailBuild: true)
     }
   }
